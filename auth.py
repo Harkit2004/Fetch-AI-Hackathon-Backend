@@ -7,9 +7,6 @@ from datetime import datetime, timedelta
 from database import get_db
 from models import User
 
-SECRET_KEY = "your_secret_key_here"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")

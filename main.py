@@ -6,25 +6,52 @@ from models import User, Transaction
 from auth import hash_password, verify_password, create_access_token, get_current_user
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.sql import func
+from expense_categorizer import categorize_expense  # Import categorization function
+from dotenv import load_dotenv
+import os
+from pydantic import BaseModel
 
+#  Initialize FastAPI app (only once)
 app = FastAPI()
 
+#  Load environment variables
+load_dotenv()
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = os.getenv("ALGORITHM")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+
+#  Ensure database tables are created
 Base.metadata.create_all(bind=engine)
 
-# Register a new user
+#  Root Route
+@app.get("/")
+def read_root():
+    return {"message": "Hello, FastAPI is running!"}
+
+#  Pydantic Models
+class UserRegister(BaseModel):
+    username: str
+    email: str
+    password: str
+
+class TransactionCreate(BaseModel):
+    amount: float
+    description: str
+
+#  Register a new user
 @app.post("/register/")
-def register(username: str, email: str, password: str, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.username == username).first():
+def register(user_data: UserRegister, db: Session = Depends(get_db)):
+    if db.query(User).filter(User.username == user_data.username).first():
         raise HTTPException(status_code=400, detail="Username already exists")
 
-    hashed_pwd = hash_password(password)
-    new_user = User(username=username, email=email, hashed_password=hashed_pwd)
+    hashed_pwd = hash_password(user_data.password)
+    new_user = User(username=user_data.username, email=user_data.email, hashed_password=hashed_pwd)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
     return {"message": "User registered successfully"}
 
-# Login to get JWT token
+#  Login to get JWT token
 @app.post("/login/")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == form_data.username).first()
@@ -34,16 +61,24 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
 
-# Add a transaction
+#  Add a transaction
 @app.post("/transactions/")
-def add_transaction(amount: float, category: str, description: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    transaction = Transaction(amount=amount, category=category, description=description, user_id=user.id)
-    db.add(transaction)
-    db.commit()
-    db.refresh(transaction)
-    return transaction
+def add_transaction(transaction: TransactionCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    category = categorize_expense(transaction.description)  # AI categorization
 
-# Get transactions with filters & pagination
+    new_transaction = Transaction(
+        amount=transaction.amount,
+        category=category,
+        description=transaction.description,
+        date=datetime.utcnow(),  # ✅ Explicitly set date
+        user_id=user.id
+    )
+    db.add(new_transaction)
+    db.commit()
+    db.refresh(new_transaction)
+    return new_transaction
+
+#  Get transactions with filters & pagination
 @app.get("/transactions/")
 def get_transactions(
     db: Session = Depends(get_db),
@@ -68,7 +103,7 @@ def get_transactions(
 
     return {"total": total, "page": page, "limit": limit, "transactions": transactions}
 
-# Monthly spending insights
+#  Monthly spending insights
 @app.get("/analytics/monthly/")
 def get_monthly_spending(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     monthly_data = (

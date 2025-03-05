@@ -1,13 +1,27 @@
-from sqlalchemy import create_engine
+
+import os
+from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
 
-DATABASE_URL = "postgresql://postgres:Noory@localhost:5432/finassist_db"
+# Load environment variables
+load_dotenv()
 
+# Retrieve the database URL
+DATABASE_URL = os.getenv("DATABASE_URL")
+print("DATABASE_URL:", os.getenv("DATABASE_URL"))
+
+if DATABASE_URL is None:
+    raise ValueError("DATABASE_URL is not set. Check your .env file.")
+
+# Database Engine
 engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 Base = declarative_base()
 
+# Dependency to get the database session
 def get_db():
     db = SessionLocal()
     try:
